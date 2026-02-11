@@ -1,15 +1,6 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-import sys
-import subprocess
-
-# Verificar e instalar openpyxl se necessário
-try:
-    import openpyxl
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl"])
-    import openpyxl
 
 # Configuração da página
 st.set_page_config(
@@ -17,7 +8,6 @@ st.set_page_config(
     page_icon="📊",
     layout="wide"
 )
-
 
 # Título e descrição
 st.title("📊 Comparador de Planilhas")
@@ -30,6 +20,7 @@ similar às funções PROCV e PROCX do Excel.
 @st.cache_data
 def carregar_planilha(arquivo):
     try:
+        # Forçar o uso do engine openpyxl
         df = pd.read_excel(arquivo, engine='openpyxl')
         return df
     except Exception as e:
@@ -42,10 +33,8 @@ def comparar_planilhas(df1, df2, coluna1, coluna2, tipo_comparacao="exata"):
     contagem = {}
     
     if tipo_comparacao == "exata":
-        # Comparação exata
         for idx1, valor1 in df1[coluna1].items():
             if pd.notna(valor1):
-                # Procura valores correspondentes na segunda planilha
                 matches = df2[df2[coluna2] == valor1]
                 
                 if not matches.empty:
@@ -63,7 +52,6 @@ def comparar_planilhas(df1, df2, coluna1, coluna2, tipo_comparacao="exata"):
                     contagem[valor1] += len(matches)
     
     elif tipo_comparacao == "parcial":
-        # Comparação parcial (contém)
         for idx1, valor1 in df1[coluna1].items():
             if pd.notna(valor1):
                 valor1_str = str(valor1).lower()
@@ -91,10 +79,14 @@ def comparar_planilhas(df1, df2, coluna1, coluna2, tipo_comparacao="exata"):
 # Função para converter DataFrame para Excel
 def to_excel(df):
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Resultados')
-    processed_data = output.getvalue()
-    return processed_data
+    try:
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Resultados')
+        processed_data = output.getvalue()
+        return processed_data
+    except Exception as e:
+        st.error(f"Erro ao gerar Excel: {str(e)}")
+        return None
 
 # Sidebar para upload de arquivos
 st.sidebar.header("📁 Upload de Arquivos")
@@ -113,12 +105,10 @@ arquivo2 = st.sidebar.file_uploader(
 
 # Processamento principal
 if arquivo1 and arquivo2:
-    # Carregar planilhas
     df1 = carregar_planilha(arquivo1)
     df2 = carregar_planilha(arquivo2)
     
     if df1 is not None and df2 is not None:
-        # Exibir preview das planilhas
         col1, col2 = st.columns(2)
         
         with col1:
@@ -133,7 +123,6 @@ if arquivo1 and arquivo2:
         
         st.divider()
         
-        # Configurações de comparação
         st.header("⚙️ Configurações de Comparação")
         
         col_config1, col_config2, col_config3 = st.columns(3)
@@ -160,7 +149,6 @@ if arquivo1 and arquivo2:
                 key="tipo_comp"
             )
         
-        # Botão de comparação
         if st.button("🔍 Comparar Planilhas", type="primary", use_container_width=True):
             with st.spinner("Comparando planilhas..."):
                 resultados, contagem = comparar_planilhas(
@@ -170,7 +158,6 @@ if arquivo1 and arquivo2:
                 if resultados:
                     st.success(f"✅ Encontradas {len(resultados)} correspondências!")
                     
-                    # Estatísticas
                     st.header("📊 Estatísticas")
                     
                     col_stat1, col_stat2, col_stat3 = st.columns(3)
@@ -188,7 +175,6 @@ if arquivo1 and arquivo2:
                     
                     st.divider()
                     
-                    # Tabela de contagem
                     st.subheader("🔢 Contagem de Repetições")
                     
                     df_contagem = pd.DataFrame([
@@ -200,7 +186,6 @@ if arquivo1 and arquivo2:
                     
                     st.divider()
                     
-                    # Resultados detalhados
                     st.subheader("📋 Resultados Detalhados")
                     
                     if tipo_comparacao == "exata":
@@ -225,7 +210,6 @@ if arquivo1 and arquivo2:
                     
                     st.dataframe(df_resultados, use_container_width=True)
                     
-                    # Busca específica
                     st.divider()
                     st.subheader("🔎 Buscar Valor Específico")
                     
@@ -257,7 +241,6 @@ if arquivo1 and arquivo2:
                         else:
                             st.warning(f"Nenhuma ocorrência encontrada para '{valor_busca}'")
                     
-                    # Download dos resultados
                     st.divider()
                     st.subheader("💾 Exportar Resultados")
                     
@@ -265,21 +248,23 @@ if arquivo1 and arquivo2:
                     
                     with col_down1:
                         excel_resultados = to_excel(df_resultados)
-                        st.download_button(
-                            label="📥 Download Resultados Detalhados (Excel)",
-                            data=excel_resultados,
-                            file_name="resultados_comparacao.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                        if excel_resultados:
+                            st.download_button(
+                                label="📥 Download Resultados Detalhados (Excel)",
+                                data=excel_resultados,
+                                file_name="resultados_comparacao.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
                     
                     with col_down2:
                         excel_contagem = to_excel(df_contagem)
-                        st.download_button(
-                            label="📥 Download Contagem (Excel)",
-                            data=excel_contagem,
-                            file_name="contagem_repeticoes.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                        if excel_contagem:
+                            st.download_button(
+                                label="📥 Download Contagem (Excel)",
+                                data=excel_contagem,
+                                file_name="contagem_repeticoes.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
                 
                 else:
                     st.warning("⚠️ Nenhuma correspondência encontrada entre as planilhas.")
